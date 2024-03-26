@@ -1,22 +1,43 @@
 import numpy as np
 import simpleaudio as sa
 
+#CLI parsing:
+import argparse
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument("input")
+parser.add_argument("-p", "--reference_path")
+parser.add_argument("-o", "--output")
+parser.add_argument("-c", "--correction_factor")
+parser.add_argument("-f", "--folder", action="store_true") #use input and output folders
+parser.add_argument("-s", "--no_save_file", action="store_true")
+parser.add_argument("-m", "--play_music", action="store_true")
+
+args = parser.parse_args()
+
 fs = 44100  # 44100 samples per second
-"""
-import sys
-path=sys.argv[0]
-midi=sys.argv[1]
-savewav=sys.argv[2]
-doplaymusic=sys.argv[3]
-"""
-path="./input"
-midi="popcorn"
+
+path=""
+if (args.reference_path!=None):
+    path=args.reference_path
+midi=args.input
 savewav=midi #output file name
-doplaymusic=True #play sound after conversion
+if (args.output!=None):
+    savewav=args.output
+doplaymusic=args.play_music #play sound after conversion
+inpath=path
+outpath=path
+if (args.folder):
+    inpath=path+"/input/"
+    outpath=path+"/output/"
+
+midiName=midi.split("/")[-1]
+saveName=savewav.split("/")[-1]
 
 #more advanced playback settings
 savefiletype="mp3"
-dosavewav=True
+dosavewav = not args.no_save_file
 pulseCorrectionFactor=1 #affects pulse width. Usually pulse width is equal to note velocity in microseconds, but this can adjust that
 selectedtracksind=[-1] #select indices of tracks to include; -1 indicates all tracks
 pulseDuration = 100
@@ -25,6 +46,8 @@ pulseDuration = 100
 tempo=500000 #initial tempo. Usually overridden unless tempoAutoset is False
 tempoAutoset=True
 tempoCorrectionFactor=16 #have no idea why this has to exist. But often tempo is slower or faster than it should be and it requires a correction factor.
+if (args.correction_factor!=None):
+    tempoCorrectionFactor=int(args.correction_factor)
 maxmidiind=10000 #in case you only want a portion of the midi
 
 #moving avg duty cycle limiter
@@ -35,20 +58,20 @@ windowsize=1000
 #deprecated
 maxpulselen=int((500/1000000)*fs) #max pulse len before turning off output
 timeoutlen=int((100/1000000)*fs) #after max pulse len exceeded, cooldown for this amount of samples
-#has been replaced by moving average duty cycle-based limiting
+#has been replaced by moving average duty cycle-based limiting though it might be brought back as this is more relevant for Tesla coils
 
 
 def writeWav(data):
     import soundfile as sf
-    sf.write(f'{path}output/{savewav}.{savefiletype}', data, fs)
+    sf.write(f'{outpath}{savewav}.{savefiletype}', data, fs)
 def ticks2samples(ticks):
    return int((fs/(1000000*tempoCorrectionFactor))*tempo*(ticks/(24)))
 
-print(f"converting {midi}.mid to {savewav}.{savefiletype}")
+print(f"converting {midi} to {savewav}.{savefiletype}")
 
 time=0
 tones=[]
-class tone:
+class tone: #class containing tone generator and other tone playing information
   frequency=0
   pulseWidth=0
   period=0
@@ -63,10 +86,10 @@ class tone:
     self.pulse=np.concatenate((np.ones(self.pulseWidth), np.zeros(self.period-self.pulseWidth))).tolist() # single pulse
     #print(self.period)
   def generate(self, gentime): #generate for a certain amount of time (in samples)
-    numperiods=int(gentime/self.period)+2 #the +2 is necessary
+    numperiods=int(gentime/self.period)+2 #the +2 is necessary to create a longer-then needed list that will be trimmed down
     pulses=self.pulse*numperiods #generate a train of pulses
     inittime=(self.time%self.period) #time in pulsetrain to start at (which is the index in a single pulse the last pulse started at)
-    final=np.array(pulses[inittime:gentime+inittime]) #slice to get gentime long list and turn into numpy array
+    final=np.array(pulses[inittime:gentime+inittime]) #slice to get a list with a length of gentime elements and turn into numpy array
     self.time+=gentime #update self.time
     return final
 
@@ -90,7 +113,7 @@ def playmusic(music):
 
 
 from mido import MidiFile
-mid = MidiFile(f"{path}/{midi}.mid", clip=True)
+mid = MidiFile(f"{inpath}{midi}", clip=True)
 time=0
 temposet=False #whether tempo has been set
 for track in mid.tracks:
@@ -99,14 +122,12 @@ for track in mid.tracks:
             if tempoAutoset and not temposet:
                 temposet=True
                 tempo=msg.tempo #comment out if tempo is completely wrong
-        if msg.type=='time_signature':
-            print(msg)
 
 
 
 
 
-
+print("converting relative times to absolute times and merging tracks")
 import time
 dt=time.monotonic()
 biggestTrack=max(mid.tracks, key=len)
@@ -178,12 +199,12 @@ def movingavg(data, window): #ChatGPT'd
     return np.convolve(data, kernel, mode='valid')
 avg=movingavg(music, windowsize)
 music=np.where((avg>=maxduty) | (avg<=minduty), 0, music[:-windowsize+1])
+print("postprocessing complete")
+print()
 
-
-print(f'{len(music)/fs} seconds')
-print(f'in {len(music)} samples')
+print(f'conversion complete: {len(music)/fs} seconds of music ({len(music)} samples)')
 print(f'with tempo: {tempo}')
-print(f"conversion completed in {time.monotonic()-dt} seconds")
+print(f"completed in {time.monotonic()-dt} seconds.")
 if dosavewav:
     print(f"saving file as {savewav}.{savefiletype}")
     writeWav(music)
