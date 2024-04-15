@@ -1,6 +1,10 @@
 import numpy as np
 import simpleaudio as sa
 
+#high-level overview
+#get midi parameters (tempo, PPQ, etc) -> merge all tracks into megatrack -> run generation to generate pulses -> postprocess -> export
+
+#example usage: python midi2tesla.py --folder --reference_path . -c 16 "<midi>.mid"
 #CLI parsing:
 import argparse
 
@@ -9,10 +13,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("input")
 parser.add_argument("-p", "--reference_path")
 parser.add_argument("-o", "--output")
-parser.add_argument("-c", "--correction_factor")
 parser.add_argument("-f", "--folder", action="store_true") #use input and output folders
 parser.add_argument("-s", "--no_save_file", action="store_true")
 parser.add_argument("-m", "--play_music", action="store_true")
+parser.add_argument("-d", "--duty_cycle", action="store_true")
 
 args = parser.parse_args()
 
@@ -37,21 +41,27 @@ saveName=savewav.split("/")[-1]
 
 #more advanced playback settings
 savefiletype="mp3"
+A4ref=440 #A4 reference in case you want to change to a different reference frequency
 dosavewav = not args.no_save_file
 pulseCorrectionFactor=1 #affects pulse width. Usually pulse width is equal to note velocity in microseconds, but this can adjust that
 selectedtracksind=[-1] #select indices of tracks to include; -1 indicates all tracks
-pulseDuration = 100
+maxPulseDuration = 10 #in samples
+minPulseDuration = 3
+maxDutyCycle = 3 #maximum duty cycle per pulse, varied depending on note velocity
+if (args.duty_cycle!=None):
+    maxDutyCycle=args.duty_cycle
+#some notes about pulse length and duty cycle. Lower duty cycle means more notes can be played without is ounding bad, but it reduces the apparent volume. Might be good to make it logarithmic since I don't thnk the correlation between volume and pulse width is linear
+#there isn't really one setting that will work well for every song. Some songs require longer duty cycles and higher pulse widths to sound good, and others will just sound like noise without an extremely low duty cycle.
 
 #tempo stuff
 tempo=500000 #initial tempo. Usually overridden unless tempoAutoset is False
 tempoAutoset=True
-tempoCorrectionFactor=16 #have no idea why this has to exist. But often tempo is slower or faster than it should be and it requires a correction factor.
-if (args.correction_factor!=None):
-    tempoCorrectionFactor=int(args.correction_factor)
-maxmidiind=10000 #in case you only want a portion of the midi
+
+
+maxmidiind=-1 #in case you only want a portion of the midi
 
 #moving avg duty cycle limiter
-maxduty=0.5
+maxduty=1
 minduty=0
 windowsize=1000
 
@@ -65,33 +75,53 @@ def writeWav(data):
     import soundfile as sf
     sf.write(f'{outpath}{savewav}.{savefiletype}', data, fs)
 def ticks2samples(ticks):
-   return int((fs/(1000000*tempoCorrectionFactor))*tempo*(ticks/(24)))
+   return int((ticks/ticksPerBeat)*(tempo/1000000)*fs) #fixed tempo issue
 
 print(f"converting {midi} to {savewav}.{savefiletype}")
 
 time=0
 tones=[]
 class tone: #class containing tone generator and other tone playing information
-  frequency=0
-  pulseWidth=0
-  period=0
-  note=0
-  time = 0
-  MIDI_NOTE_TO_FREQUENCY = 440 * 2 ** ((-9) / 12)  # MIDI note 69 (A4) frequency (ChatGPT'd)
-  def __init__(self, tone, pulseWidth): #startTime will be timestamp to start
-    self.note=tone
-    self.frequency=self.MIDI_NOTE_TO_FREQUENCY * 2 ** ((tone - 69) / 12) #ChatGPT'd
-    self.period=int(((1/self.frequency)*fs)/2) #period in samples. Dividing by 2 works for some reason
-    self.pulseWidth=int((pulseWidth/1000000)*fs) #pulse width in samples
-    self.pulse=np.concatenate((np.ones(self.pulseWidth), np.zeros(self.period-self.pulseWidth))).tolist() # single pulse
+    frequency=0
+    pulseWidth=0
+    period=0
+    note=0
+    time = 0
+    pitch = 0
+    channel=0
+    velocity=0
+    def __init__(self, tone, velocity, channel): #startTime will be timestamp to start #TODO: add pitch bend and continuous amplitude (pulse width) adjustment functions 
+        self.note=tone
+        self.velocity=velocity
+        self.channel=channel
+        self.frequency=A4ref * 2 ** ((tone - 69) / 12) #ChatGPT'd
+        self.setFreq(self.frequency) #generate and calculate all the things
     #print(self.period)
-  def generate(self, gentime): #generate for a certain amount of time (in samples)
-    numperiods=int(gentime/self.period)+2 #the +2 is necessary to create a longer-then needed list that will be trimmed down
-    pulses=self.pulse*numperiods #generate a train of pulses
-    inittime=(self.time%self.period) #time in pulsetrain to start at (which is the index in a single pulse the last pulse started at)
-    final=np.array(pulses[inittime:gentime+inittime]) #slice to get a list with a length of gentime elements and turn into numpy array
-    self.time+=gentime #update self.time
-    return final
+    def changePitch(self, newPitch): #for pitch bending functionality
+        self.pitch=newPitch
+        bend_ratio = (newPitch) / 4096 #allow 2 semitones up or down
+        adjusted_note_number = self.note + bend_ratio
+        self.frequency = A4ref * (2 ** ((adjusted_note_number-69) / 12))
+        self.setFreq(self.frequency)
+        return
+    def setFreq(self, freq):
+        self.period=int(((1/freq)*fs)/2) #period in samples. Dividing by 2 works for some reason
+        self.pulseWidth=int((self.velocity/127)*(maxDutyCycle/100)*self.period) #convert velocity to duty cycle (fraction of 1) then multiply by period to get the pulsewidth information
+        #adding an offset/minimum on time can help balance out the relative strength of notes
+        #should change this to make adjustment have a more continuous range
+        if self.pulseWidth>maxPulseDuration:
+            self.pulseWidth=maxPulseDuration
+        if self.pulseWidth<minPulseDuration:
+            self.pulseWidth=minPulseDuration
+        self.pulse=np.concatenate((np.ones(self.pulseWidth), np.zeros(self.period-self.pulseWidth))).tolist() # single pulse
+    def generate(self, gentime): #generate for a certain amount of time (in samples)
+        numperiods=int(gentime/self.period)+2 #the +2 is necessary to create a longer-then needed list that will be trimmed down
+        pulses=self.pulse*numperiods #generate a train of pulses
+        inittime=(self.time%self.period) #time in pulsetrain to start at (which is the index in a single pulse the last pulse started at)
+        final=np.array(pulses[inittime:gentime+inittime]) #slice to get a list with a length of gentime elements and turn into numpy array
+        self.time+=gentime #update self.time
+        return final
+
 
 def findInTones(note):
    for ind in range(len(tones)):
@@ -113,16 +143,20 @@ def playmusic(music):
 
 
 from mido import MidiFile
-mid = MidiFile(f"{inpath}{midi}", clip=True)
+import mido
+mid = MidiFile(f"{inpath}{midi}")
+ticksPerBeat=mid.ticks_per_beat #THIS FIXES ALL THE TEMPO PROBLEMS AHHHHHH
+#print(f"ticks per beat: {ticksPerBeat}")
 time=0
 temposet=False #whether tempo has been set
 for track in mid.tracks:
     for msg in track[:min((len(track), 10))]:
+        #print(msg)
         if msg.type=='set_tempo':
             if tempoAutoset and not temposet:
                 temposet=True
                 tempo=msg.tempo #comment out if tempo is completely wrong
-
+                print(f"found tempo: {mido.tempo2bpm(msg.tempo)} bpm")
 
 
 
@@ -170,7 +204,7 @@ music=np.zeros(totalsamples) #placeholder array to be filled by samples. Much mo
 absTime=0
 bigLen=len(megatrack)
 for ind, msg in enumerate(megatrack[:maxmidiind]): #will add multiple tracks later
-    if msg.type=='note_on' or msg.type=='note_off':
+    if msg.type=='note_on' or msg.type=='note_off' or msg.type=='pitchwheel':
         if ind%100==0:
             print(f"processed {ind}/{bigLen} commands")
             pass
@@ -180,15 +214,22 @@ for ind, msg in enumerate(megatrack[:maxmidiind]): #will add multiple tracks lat
         currSampTime+=genTime
         absTime+=msg.time-absTime
         if msg.type=='note_on':
-           #can use msg.velocity*pulseCorrectionFactor for pulse duration
-           tones.append(tone(msg.note, pulseDuration)) #append note to current note playing
+           #pulseDuration = msg.velocity*pulseCorrectionFactor TODO: possibly add some sort of compensation for the higher and lower frequencies
+           tones.append(tone(msg.note, msg.velocity, msg.channel)) #append note to current note playing
         if msg.type=='note_off':
             tonetoremove=findInTones(msg.note)
             if tonetoremove is not None:
                 tones.pop(tonetoremove) #remove note once it stops playing
-        if msg.type=='tempo':
-           tempo=msg.tempo
+    if msg.type=='tempo':
+        tempo=msg.tempo
+    if msg.type=='pitchwheel':
+        for ind in range(len(tones)):
+            if tones[ind].channel==msg.channel:
+                tones[ind].changePitch(msg.pitch)
+        #find all tones with same channel attribute and change pitch
 
+
+#TODO: Drum implementation using a single long pulse
 print(f"postprocessing {len(music)} elements to limit duty cycle to {maxduty*100}%: ")
 #postprocess
 #window=np.zeros(windowsize)
@@ -203,7 +244,7 @@ print("postprocessing complete")
 print()
 
 print(f'conversion complete: {len(music)/fs} seconds of music ({len(music)} samples)')
-print(f'with tempo: {tempo}')
+print(f'with tempo: {tempo} us/beat')
 print(f"completed in {time.monotonic()-dt} seconds.")
 if dosavewav:
     print(f"saving file as {savewav}.{savefiletype}")
