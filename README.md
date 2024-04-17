@@ -1,8 +1,16 @@
 Simple converter for midi files to square wave tesla coil music
 
+For custom (and better quality!) music on prebuilt Tesla coils that connect over bluetooth or people who don't have, don't want to build, or don't find it convenient to use a fiber optic interrupter. 
+
 A few notes:
 
 Midis with many simultaneous tracks and notes will have to have some tracks removed as they will not sound very good when converted into what is essentially 1-bit audio. Use something like https://signal.vercel.app/ to view and modify your midis. There are some large repositories of midis for Tesla coils specifically, and those files will often work decently well without additional modification. I recommend removing any redundant or noisy tracks. You can simulate how it will sound in the Signal app by changing everything to the synth (square wave) instrument.
+
+Features:
+- Basic polyphony on a single coil
+- pitchbend support
+- accessible playback parameters in code
+- simple to use
 
 Usage example:
 
