@@ -6,19 +6,13 @@ Midis with many simultaneous tracks and notes will have to have some tracks remo
 
 Usage example:
 
-`python midi2tesla.py --folder --reference_path . "\<midi\>.mid"`
-
-will convert \<midi\>.mid from the folder /input to \<midi\>.mid.mp3 in the folder /output
+`python midi2tesla.py --folder --reference_path . "\<midi\>.mid"` will convert \<midi\>.mid from the folder /input to \<midi\>.mid.mp3 in the folder /output
 
 
-python midi2tesla.py --folder --reference_path . "\<midi\>.mid" --output "\<filename\>"
-
-will convert \<midi\>.mid from the folder /input to \<filename\>.mp3 in the folder /output
+`python midi2tesla.py --folder --reference_path . "\<midi\>.mid" --output "\<filename\>"` will convert \<midi\>.mid from the folder /input to \<filename\>.mp3 in the folder /output
 
 
-python midi2tesla.py "\<midi\>.mid" --output "\<filename\>"
-
-will convert \<midi\>.mid from the current directory to \<filename\>.mp3 in the current directory
+`python midi2tesla.py "\<midi\>.mid" --output "\<filename\>"` will convert \<midi\>.mid from the current directory to \<filename\>.mp3 in the current directory
 
 
 
