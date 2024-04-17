@@ -16,7 +16,7 @@ parser.add_argument("-o", "--output")
 parser.add_argument("-f", "--folder", action="store_true") #use input and output folders
 parser.add_argument("-s", "--no_save_file", action="store_true")
 parser.add_argument("-m", "--play_music", action="store_true")
-parser.add_argument("-d", "--duty_cycle", action="store_true")
+parser.add_argument("-d", "--duty_cycle")
 
 args = parser.parse_args()
 
@@ -41,7 +41,7 @@ saveName=savewav.split("/")[-1]
 
 #more advanced playback settings
 savefiletype="mp3"
-A4ref=440 #A4 reference in case you want to change to a different reference frequency
+A3ref=220 #A3 reference in case you want to change to a different reference frequency
 dosavewav = not args.no_save_file
 pulseCorrectionFactor=1 #affects pulse width. Usually pulse width is equal to note velocity in microseconds, but this can adjust that
 selectedtracksind=[-1] #select indices of tracks to include; -1 indicates all tracks
@@ -49,7 +49,7 @@ maxPulseDuration = 10 #in samples
 minPulseDuration = 3
 maxDutyCycle = 3 #maximum duty cycle per pulse, varied depending on note velocity
 if (args.duty_cycle!=None):
-    maxDutyCycle=args.duty_cycle
+    maxDutyCycle=int(args.duty_cycle)
 #some notes about pulse length and duty cycle. Lower duty cycle means more notes can be played without is ounding bad, but it reduces the apparent volume. Might be good to make it logarithmic since I don't thnk the correlation between volume and pulse width is linear
 #there isn't really one setting that will work well for every song. Some songs require longer duty cycles and higher pulse widths to sound good, and others will just sound like noise without an extremely low duty cycle.
 
@@ -60,8 +60,8 @@ tempoAutoset=True
 
 maxmidiind=-1 #in case you only want a portion of the midi
 
-#moving avg duty cycle limiter
-maxduty=1
+#moving avg duty cycle limiter. Is this even needed? Its point is to reduce the chance of too much coil power draw, but that might be better implemented by a pulse width limiter.
+maxduty=0.5 #50% duty cycle
 minduty=0
 windowsize=1000
 
@@ -94,14 +94,14 @@ class tone: #class containing tone generator and other tone playing information
         self.note=tone
         self.velocity=velocity
         self.channel=channel
-        self.frequency=A4ref * 2 ** ((tone - 69) / 12) #ChatGPT'd
+        self.frequency=A3ref * 2 ** ((tone - 69) / 12) #ChatGPT'd
         self.setFreq(self.frequency) #generate and calculate all the things
     #print(self.period)
     def changePitch(self, newPitch): #for pitch bending functionality
         self.pitch=newPitch
         bend_ratio = (newPitch) / 4096 #allow 2 semitones up or down
         adjusted_note_number = self.note + bend_ratio
-        self.frequency = A4ref * (2 ** ((adjusted_note_number-69) / 12))
+        self.frequency = A3ref * (2 ** ((adjusted_note_number-69) / 12))
         self.setFreq(self.frequency)
         return
     def setFreq(self, freq):
@@ -198,7 +198,7 @@ megatrack = sorted(megatrack, key=lambda x: x.time)
 #this midi object now has times stored as absolute times not relative times.
 
 
-
+#tones=[None]*20 #support max 20 note polyphony. Should be
 totalsamples=int(ticks2samples(megatrack[-1].time)+windowsize) #sum total number of samples
 music=np.zeros(totalsamples) #placeholder array to be filled by samples. Much more efficient than np.append()
 absTime=0
