@@ -26,10 +26,10 @@ required parameter: input: String with path and filename to midi file to convert
 
 optional parameters:
 - --reference_path or -p deteremines what root path to look for files in
---output overrides the default save file name
---folder or -f will use /input and /output folders
---duty_cycle or -d controls the maximum duty cycle parameter
---no_save_file or -s disables file saving
---play_music or -m will play music after processing
+- --output overrides the default save file name
+- --folder or -f will use /input and /output folders
+- --duty_cycle or -d controls the maximum duty cycle parameter
+- --no_save_file or -s disables file saving
+- --play_music or -m will play music after processing
 
 
