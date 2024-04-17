@@ -9,3 +9,27 @@ Usage example:
 python midi2tesla.py --folder --reference_path . "\<midi\>.mid"
 
 will convert \<midi\>.mid from the folder /input to \<midi\>.mid.mp3 in the folder /output
+
+
+python midi2tesla.py --folder --reference_path . "\<midi\>.mid" --output "\<filename\>"
+
+will convert \<midi\>.mid from the folder /input to \<filename\>.mp3 in the folder /output
+
+
+python midi2tesla.py "\<midi\>.mid" --output "\<filename\>"
+
+will convert \<midi\>.mid from the current directory to \<filename\>.mp3 in the current directory
+
+
+
+required parameter: input: String with path and filename to midi file to convert.
+
+optional parameters:
+--reference_path or -p deteremines what root path to look for files in
+--output overrides the default save file name
+--folder or -f will use /input and /output folders
+--duty_cycle or -d controls the maximum duty cycle parameter
+--no_save_file or -s disables file saving
+--play_music or -m will play music after processing
+
+
