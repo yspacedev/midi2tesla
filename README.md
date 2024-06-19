@@ -15,8 +15,6 @@ Songs that seem to work well:
 - Generally very melodic, fast-paced music
 - anything that relies on a very slow melody will end up having annoying continuous tones that overshadow everything else
 - anything that relies on drums and vocals more than instruments like guitar, piano, etc will likely not sound very good and/or be hard to recognize
-- Game soundtracks seem to work well (if you can find the midis)
-- rock songs (such as Thunderstruck, Crazy Train, Money (Pink Floyd), etc) work extremely well as the square wave sounds similar to an overdriven guitar
 - Generally, just experiment to see what sounds good.
 
 
