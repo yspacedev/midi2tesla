@@ -24,7 +24,7 @@ Features:
 - pitchbend support
 - accessible playback parameters in code
 - simple to use (at least in my opinion)
-- CURRENTLY WIP - note decay
+- CURRENTLY WIP - note decay, ADSR envelopes, tempo and time signature change
 
 Usage example:
 
